@@ -1,0 +1,328 @@
+// ==UserScript==
+// @name         E站里站授权登录
+// @namespace    http://tampermonkey.net/
+// @version      2.0
+// @description  检测Exhentai是否为白屏，如果是则显示美化后的登录UI，并支持官网授权登录和手动停止刷新
+// @author       牛子哥
+// @match        https://exhentai.org/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let refreshInterval;
+    let refreshUI;
+    let countdown;
+    const refreshIntervalMs = 5000; // 刷新间隔，毫秒
+
+    const styles = `
+        .exh-ui {
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+        .exh-container {
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .exh-title {
+            color: #4a4a4a;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .exh-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .exh-button:hover {
+            background-color: #2980b9;
+        }
+        .exh-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .exh-label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        .exh-progress-container {
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+        .exh-progress-bar {
+            height: 100%;
+            background-color: #2ecc71;
+            transition: width 0.5s ease-in-out;
+        }
+        #countdown {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+    `;
+
+    function addStyles() {
+        const styleElement = document.createElement('style');
+        styleElement.textContent = styles;
+        document.head.appendChild(styleElement);
+    }
+
+    function checkPage() {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(data => {
+                if (data.trim() === '' || document.body.innerHTML.trim() === '') {
+                    showLoginUI();
+                } else {
+                    console.log('页面不是白屏');
+                }
+            })
+            .catch(error => {
+                console.error('请求失败:', error);
+                showLoginUI();
+            });
+    }
+
+    function showLoginUI() {
+        let loginUI = document.createElement('div');
+        loginUI.className = 'exh-ui';
+        loginUI.style.position = 'fixed';
+        loginUI.style.top = '0';
+        loginUI.style.left = '0';
+        loginUI.style.width = '100%';
+        loginUI.style.height = '100%';
+        loginUI.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        loginUI.style.zIndex = '9999';
+        loginUI.style.display = 'flex';
+        loginUI.style.alignItems = 'center';
+        loginUI.style.justifyContent = 'center';
+
+        loginUI.innerHTML = `
+            <div class="exh-container">
+                <h1 class="exh-title">Exhentai 登录</h1>
+                <button class="exh-button" id="cookieLogin">Cookie 登录</button>
+                <button class="exh-button" id="authorizeLogin">官网授权登录</button>
+            </div>
+        `;
+
+        document.body.appendChild(loginUI);
+
+        document.getElementById('cookieLogin').onclick = loginWithCookie;
+        document.getElementById('authorizeLogin').onclick = authorizeLogin;
+
+        if (getCookie('shuaxin') === 'yes') {
+            startRefreshing();
+        }
+    }
+
+    function loginWithCookie() {
+        clearSpecificCookie('yay');
+
+        let cookiePromptUI = document.createElement('div');
+        cookiePromptUI.className = 'exh-ui';
+        cookiePromptUI.style.position = 'fixed';
+        cookiePromptUI.style.top = '0';
+        cookiePromptUI.style.left = '0';
+        cookiePromptUI.style.width = '100%';
+        cookiePromptUI.style.height = '100%';
+        cookiePromptUI.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        cookiePromptUI.style.zIndex = '10001';
+        cookiePromptUI.style.display = 'flex';
+        cookiePromptUI.style.alignItems = 'center';
+        cookiePromptUI.style.justifyContent = 'center';
+
+        cookiePromptUI.innerHTML = `
+            <div class="exh-container">
+                <h2 class="exh-title">请输入Cookie值</h2>
+                <label class="exh-label" for="igneous">igneous:</label>
+                <input class="exh-input" type="text" id="igneous">
+                <label class="exh-label" for="ipb_member_id">ipb_member_id:</label>
+                <input class="exh-input" type="text" id="ipb_member_id">
+                <label class="exh-label" for="ipb_pass_hash">ipb_pass_hash:</label>
+                <input class="exh-input" type="text" id="ipb_pass_hash">
+                <button class="exh-button" id="submitCookie">提交</button>
+            </div>
+        `;
+
+        document.body.appendChild(cookiePromptUI);
+
+        document.getElementById('submitCookie').onclick = function() {
+            let igneousValue = document.getElementById('igneous').value;
+            let memberIdValue = document.getElementById('ipb_member_id').value;
+            let passHashValue = document.getElementById('ipb_pass_hash').value;
+
+            if (igneousValue && memberIdValue && passHashValue) {
+                setCookie('igneous', igneousValue, 365);
+                setCookie('ipb_member_id', memberIdValue, 365);
+                setCookie('ipb_pass_hash', passHashValue, 365);
+                document.body.removeChild(cookiePromptUI);
+                setCookie('shuaxin', 'yes', 1);
+                startRefreshing();
+            } else {
+                alert('请填写所有值');
+            }
+        };
+    }
+
+    function authorizeLogin() {
+        let loginWindow = window.open('https://e-hentai.org/bounce_login.php?b=d&bt=1-1', 'loginWindow', 'width=800,height=600');
+        let checkLoginWindow = setInterval(function() {
+            if (loginWindow.closed) {
+                clearInterval(checkLoginWindow);
+                setCookie('shuaxin', 'yes', 1);
+                startRefreshing();
+            }
+        }, 1000);
+    }
+
+    function startRefreshing() {
+        createRefreshUI();
+        updateCountdown();
+        refreshInterval = setInterval(function() {
+            showRefreshingUI();
+            clearSpecificCookie('yay');
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        }, refreshIntervalMs);
+    }
+
+    function stopRefreshing() {
+        clearInterval(refreshInterval);
+        clearInterval(countdown);
+        if (refreshUI) {
+            refreshUI.style.display = 'none';
+        }
+        setCookie('shuaxin', 'no', 1);
+    }
+
+    function createRefreshUI() {
+        if (refreshUI) {
+            refreshUI.style.display = 'flex';
+            return;
+        }
+
+        refreshUI = document.createElement('div');
+        refreshUI.className = 'exh-ui';
+        refreshUI.style.position = 'fixed';
+        refreshUI.style.top = '0';
+        refreshUI.style.left = '0';
+        refreshUI.style.width = '100%';
+        refreshUI.style.height = '100%';
+        refreshUI.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        refreshUI.style.zIndex = '10000';
+        refreshUI.style.display = 'flex';
+        refreshUI.style.alignItems = 'center';
+        refreshUI.style.justifyContent = 'center';
+
+        refreshUI.innerHTML = `
+            <div class="exh-container">
+                <h2 class="exh-title">自动刷新</h2>
+                <p>距离下次刷新还有:</p>
+                <p id="countdown"></p>
+                <div class="exh-progress-container">
+                    <div id="progress" class="exh-progress-bar"></div>
+                </div>
+                <button class="exh-button" id="stopRefresh">停止刷新</button>
+            </div>
+        `;
+
+        document.body.appendChild(refreshUI);
+
+        document.getElementById('stopRefresh').onclick = stopRefreshing;
+    }
+
+    function showRefreshingUI() {
+        let refreshingUI = document.createElement('div');
+        refreshingUI.className = 'exh-ui';
+        refreshingUI.style.position = 'fixed';
+        refreshingUI.style.top = '0';
+        refreshingUI.style.left = '0';
+        refreshingUI.style.width = '100%';
+        refreshingUI.style.height = '100%';
+        refreshingUI.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        refreshingUI.style.zIndex = '10002';
+        refreshingUI.style.display = 'flex';
+        refreshingUI.style.alignItems = 'center';
+        refreshingUI.style.justifyContent = 'center';
+
+        refreshingUI.innerHTML = `
+            <div class="exh-container">
+                <h2 class="exh-title">正在获取...</h2>
+            </div>
+        `;
+
+        document.body.appendChild(refreshingUI);
+
+        setTimeout(() => {
+            document.body.removeChild(refreshingUI);
+        }, 2000);
+    }
+
+    function updateCountdown() {
+        let countdownElement = document.getElementById('countdown');
+        let progressElement = document.getElementById('progress');
+        let remainingTime = refreshIntervalMs / 1000;
+
+        countdownElement.innerText = remainingTime + ' 秒';
+        progressElement.style.width = '0%';
+
+        countdown = setInterval(function() {
+            remainingTime--;
+            countdownElement.innerText = remainingTime + ' 秒';
+            progressElement.style.width = ((refreshIntervalMs / 1000 - remainingTime) / (refreshIntervalMs / 1000)) * 100 + '%';
+
+            if (remainingTime <= 0) {
+                clearInterval(countdown);
+                countdownElement.innerText = '刷新中...';
+                progressElement.style.width = '100%';
+            }
+        }, 1000);
+    }
+
+    function clearSpecificCookie(cookieName) {
+        document.cookie = cookieName + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.exhentai.org';
+    }
+
+    function setCookie(name, value, days) {
+        let expires = "";
+        if (days) {
+            let date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            expires = "; expires=" + date.toUTCString();
+        }
+        document.cookie = name + "=" + (value || "") + expires + "; path=/";
+    }
+
+    function getCookie(name) {
+        let nameEQ = name + "=";
+        let ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+        }
+        return null;
+    }
+
+    addStyles();
+    checkPage();
+})();
