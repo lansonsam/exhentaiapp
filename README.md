@@ -2,8 +2,8 @@
 
 一个用于 Exhentai 的 Tampermonkey 脚本，提供自动登录、IP检测、自动刷新等功能。
 
-[![GitHub license](https://img.shields.io/github/license/your-username/your-repo)](https://github.com/your-username/your-repo/blob/master/LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0-blue.svg)](https://github.com/your-username/your-repo/releases)
+[![GitHub license](https://img.shields.io/github/license/lansonsam/exhentaiapp)](https://github.com/lansonsam/exhentaiapp/blob/main/LICENSE)
+[![Version](https://img.shields.io/badge/version-4.0-blue.svg)](https://github.com/lansonsam/exhentaiapp/releases)
 
 ## 功能特点
 
