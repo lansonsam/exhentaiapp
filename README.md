@@ -154,9 +154,8 @@
 
 **牛子哥**
 
-- GitHub: [@your-username](https://github.com/your-username)
-- Email: your-email@example.com
-- Blog: [your-blog.com](https://your-blog.com)
+- GitHub: [@lansonsam](https://github.com/lansonsam)
+- Email: lansonsam@anche.no
 
 ## 反馈与建议
 
